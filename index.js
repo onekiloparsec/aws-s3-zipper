@@ -37,7 +37,8 @@ S3Zipper.prototype = {
                 AWS.config.update({
                     accessKeyId: awsConfig.accessKeyId,
                     secretAccessKey: awsConfig.secretAccessKey,
-                    region: awsConfig.region
+                    region: awsConfig.region,
+                    signatureVersion: 'v4'
                 });
             }
 
