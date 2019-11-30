@@ -7,18 +7,19 @@ var s3 = require('s3');
 
 function S3Zipper(awsConfig) {
     var self = this
-    AWS.config.getCredentials(function (err) {
-      if (err) {
-        assert.ok(awsConfig, 'AWS S3 options must be defined.');
-        assert.notEqual(awsConfig.accessKeyId, undefined, 'Requires S3 AWS Key.');
-        assert.notEqual(awsConfig.secretAccessKey, undefined, 'Requires S3 AWS Secret');
-        assert.notEqual(awsConfig.region, undefined, 'Requires AWS S3 region.');
-        assert.notEqual(awsConfig.bucket, undefined, 'Requires AWS S3 bucket.');
-        self.init(awsConfig);
-      } else {
-        self.init(awsConfig)
-      }
-    })
+    assert.ok(awsConfig, 'AWS S3 options must be defined.');
+    assert.notEqual(awsConfig.accessKeyId, undefined, 'Requires S3 AWS Key.');
+    assert.notEqual(awsConfig.secretAccessKey, undefined, 'Requires S3 AWS Secret');
+    assert.notEqual(awsConfig.region, undefined, 'Requires AWS S3 region.');
+    assert.notEqual(awsConfig.bucket, undefined, 'Requires AWS S3 bucket.');
+
+    AWS.config.update({
+        accessKeyId: awsConfig.accessKeyId,
+        secretAccessKey: awsConfig.secretAccessKey,
+        region: awsConfig.region
+    });
+
+    self.init(awsConfig);
 }
 
 
@@ -31,31 +32,12 @@ S3Zipper.prototype = {
     init: function (awsConfig) {
         this.awsConfig = awsConfig;
         var self = this
-        AWS.config.getCredentials(function (err) {
-
-            if (err) {
-                AWS.config.update({
-                    accessKeyId: awsConfig.accessKeyId,
-                    secretAccessKey: awsConfig.secretAccessKey,
-                    region: awsConfig.region
-                });
-            }
-
-            if (awsConfig.endpoint) {
-                AWS.config.update({
-                    endpoint: awsConfig.endpoint
-                });
-            }
-
-            self.s3bucket = new AWS.S3({
+        self.s3bucket = new AWS.S3({
                 signatureVersion: 'v4',
-                params: {
-                    Bucket: self.awsConfig.bucket
-                }
-            });
-
-        })
-
+            params: {
+                Bucket: self.awsConfig.bucket
+            }
+        });
     }
     , filterOutFiles: function (fileObj) {
         return fileObj;
@@ -274,25 +256,28 @@ S3Zipper.prototype = {
         s3FolderName: the name of the folder within the S3 bucket
         , startKey: the key of the file you want to start after. keep null if you want to start from the first file
         , s3ZipFileName: the name of the file you to zip to and upload to S3
+        , tmpDir: specifies the directory of the temporal zip file, default is node_modules/aws-s3-zipper
         , recursive: indicates to zip nested folders or not
        }
        , callback: function
     */
     , zipToS3File: function (params, callback) {
 
-        if(arguments.length == 4){
+        if(arguments.length == 5){
             // for backward compatibility
             params = {
                 s3FolderName:arguments[0]
                 ,startKey:arguments[1]
                 ,s3ZipFileName:arguments[2]
+                ,tmpDir:arguments[3]
                 ,recursive: false
             };
-            callback= arguments[3];
+            callback= arguments[4];
         }
 
         var t = this;
-        params.zipFileName = '__' + Date.now() + '.zip';
+        params.tmpDir = params.tmpDir?params.tmpDir+"/":""
+        params.zipFileName = params.tmpDir+'__' + Date.now() + '.zip';
 
         if (params.s3ZipFileName.indexOf('/') < 0)
             params.s3ZipFileName = params.s3FolderName + "/" + params.s3ZipFileName;
@@ -307,12 +292,12 @@ S3Zipper.prototype = {
                         zipFileLocation: result.Location,
                         zippedFiles: r.zippedFiles
                     });
-                    fs.unlink(params.zipFileName);
+                    fs.unlinkSync(params.zipFileName);
                 });
             }
             else {
                 console.log('no files zipped. nothing to upload');
-                fs.unlink(params.zipFileName);
+                fs.unlinkSync(params.zipFileName);
                 callback(null, {
                     zipFileETag: null,
                     zipFileLocation: null,
@@ -331,13 +316,14 @@ S3Zipper.prototype = {
         , s3ZipFileName: the name of the file you to zip to and upload to S3
         , maxFileCount: an integer that caps off how many files to zip at a time
         , maxFileSize: max total size of files before they are zipped
+        , tmpDir: specifies the directory of the temporal zip file, default is node_modules/aws-s3-zipper
         , recursive: indicates to zip nested folders or not
      }
      , callback: function
     */
     , zipToS3FileFragments: function (params, callback) {
 
-        if(arguments.length == 6){
+        if(arguments.length == 7){
             // for backward compatibility
             params = {
                 s3FolderName:arguments[0]
@@ -345,14 +331,16 @@ S3Zipper.prototype = {
                 , s3ZipFileName:arguments[2]
                 , maxFileCount:arguments[3]
                 , maxFileSize:arguments[4]
+                , tmpDir:arguments[5]
                 , recursive: false
             };
-            callback= arguments[5];
+            callback= arguments[6];
         }
 
         var t = this;
         ///local file
-        params.zipFileName = '__' + Date.now() + '.zip';
+        params.tmpDir = params.tmpDir?params.tmpDir+"/":""
+        params.zipFileName = params.tmpDir+'__' + Date.now() + '.zip';
 
         if (params.s3ZipFileName.indexOf('/') < 0)
             params.s3ZipFileName = params.s3FolderName + "/" + params.s3ZipFileName;
@@ -383,7 +371,7 @@ S3Zipper.prototype = {
                 if (uploadResult) {
                     result.uploadedFile = uploadResult;
                     console.log('remove temp file ', localFragName);
-                    fs.unlink(localFragName);
+                    fs.unlinkSync(localFragName);
                 }
                 pendingUploads--;
                 if (pendingUploads == 0 && finalResult) {
@@ -484,7 +472,7 @@ S3Zipper.prototype = {
                 fileStream.close();
                 if (result.zippedFiles.length == 0) /// its an empty zip file get rid of it
 
-                    fs.unlink(fragFileName);
+                    fs.unlinkSync(fragFileName);
 
                 else
                     events.onFileZipped(fragFileName, result);
