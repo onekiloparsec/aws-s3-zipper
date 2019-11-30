@@ -168,7 +168,7 @@ S3Zipper.prototype = {
         }
 
 
-        var zip = new archiver.create('zip');
+        var zip = new archiver('zip');
         if (params.pipe) zip.pipe(params.pipe);
 
         var t = this;
